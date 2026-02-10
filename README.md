@@ -70,6 +70,7 @@ Shows the game marquee artwork while a game is running.
 Example wiring reference:
 
 ![SSD1306 Wiring](screenshots/wiring.jpg)
+![SSD1306 Wiring](screenshots/wiring-diagram.jpg)
 
 ---
 
