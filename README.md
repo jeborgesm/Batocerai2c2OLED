@@ -67,7 +67,7 @@ screenshots/game-mode.jpg
 
 Example wiring reference:
 
-screenshots/wiring.jpg
+![SSD1306 Wiring](screenshots/wiring.jpg)
 
 ---
 
