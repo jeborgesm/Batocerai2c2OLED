@@ -38,14 +38,16 @@ Displayed when a game is launched.
 ### Main Menu Display
 Shows system information when no game is running.
 
-screenshots/mainmenu1.jpg
-screenshots/mainmenu2.jpg
+![Menu Mode OLED](screenshots/mainmenu1.jpg)
+![Menu Mode OLED](screenshots/mainmenu2.jpg)
 
 ### Game Marquee Display
 Shows the game marquee artwork while a game is running.
 
-screenshots/game-mode.jpg
+![Game Mode OLED](screenshots/game-mode.jpg)
 
+> Place your screenshots in a `screenshots/` folder in the repository.
+> Supported formats: JPG or PNG.
 
 ---
 
