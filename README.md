@@ -46,9 +46,6 @@ Shows the game marquee artwork while a game is running.
 
 ![Game Mode OLED](screenshots/game-mode.jpg)
 
-> Place your screenshots in a `screenshots/` folder in the repository.
-> Supported formats: JPG or PNG.
-
 ---
 
 ## Wiring Diagram (SSD1306 I2C)
