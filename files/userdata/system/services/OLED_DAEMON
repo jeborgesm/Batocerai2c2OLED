@@ -1,0 +1,14 @@
+#!/bin/sh
+PID="/var/run/oled_daemon.pid"
+PY="/userdata/system/bin/oled_daemon.py"
+
+case "$1" in
+  start)
+    python3 "$PY" >/dev/null 2>&1 &
+    echo $! > "$PID"
+    ;;
+  stop)
+    [ -f "$PID" ] && kill "$(cat "$PID")" 2>/dev/null
+    rm -f "$PID"
+    ;;
+esac
