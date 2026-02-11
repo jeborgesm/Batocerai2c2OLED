@@ -206,15 +206,6 @@ def has_cmd(cmd):
     except Exception:
         return False
 
-def draw_banner(buf):
-    fill_rect_on(buf, 0, 0, W, YELLOW_H)
-    banner = "BATOCERA"
-    scale = 2
-    banner_w = len(banner) * 6 * scale
-    x0 = max(0, (W - banner_w) // 2)
-    y0 = max(0, (YELLOW_H - 7*scale) // 2)
-    draw_text_scaled(buf, banner, x0, y0, scale=scale, invert=True)
-
 def rom_base_dir_from_path(rompath):
     rp = (rompath or "").replace("\\","/").strip()
     if rp.startswith("/userdata/roms/"):
@@ -383,6 +374,89 @@ def draw_menu_pages(buf, page_idx):
     clear_rect(buf, 0, BLUE_Y0, W, BLUE_Y0 + BLUE_H)
     for i, line in enumerate(page):
         draw_text(buf, line[:21], 0, y_lines[i])
+
+
+def render_triangle_outline(buf, cx=18, top_y=0, tip_y=15, half_w=10):
+    """
+    Draw a VERY thin outlined triangle BEHIND the joystick:
+      apex at (cx, tip_y), top edge around (top_y), outlined only.
+    """
+    # left edge
+    for y in range(top_y, tip_y + 1):
+        t = (y - top_y) / max(1, (tip_y - top_y))
+        x = int(round(cx - half_w * (1 - t)))
+        clearpx(buf, x, y)
+
+    # right edge
+    for y in range(top_y, tip_y + 1):
+        t = (y - top_y) / max(1, (tip_y - top_y))
+        x = int(round(cx + half_w * (1 - t)))
+        clearpx(buf, x, y)
+
+    # top edge (thin)
+    for x in range(cx - half_w, cx + half_w + 1):
+        clearpx(buf, x, top_y)
+
+    # tip pixel
+    clearpx(buf, cx, tip_y)
+
+
+def render_joystick(buf):
+    # Triangle outline first (so joystick draws on top of it)
+    render_triangle_outline(buf, cx=18, top_y=1, tip_y=15, half_w=10)
+
+    # Forum-style joystick proportions (drawn over triangle)
+    cx = 18
+    cy = 6
+    r = 4
+
+    # Ball
+    for y in range(-r, r+1):
+        for x in range(-r, r+1):
+            if x*x + y*y <= r*r:
+                clearpx(buf, cx+x, cy+y)
+
+    # Stem (thin)
+    for y in range(8, 12):
+        for x in range(17, 19):
+            clearpx(buf, x, y)
+
+    # Base (wide)
+    for y in range(12, 15):
+        for x in range(12, 24):
+            clearpx(buf, x, y)
+
+    # Slight base rounding corners
+    clearpx(buf, 12, 13)
+    clearpx(buf, 23, 13)
+
+
+def draw_banner(buf):
+    fill_rect_on(buf, 0, 0, W, YELLOW_H)
+    render_joystick(buf)
+
+    # Handmade BATOCERA wordmark (correct bitmap)
+    word = [
+        "............................................",
+        "####...##..#####..###..####.####.####...##..",
+        "#...#.#..#...#...#...#.#....#....#...#.#..#.",
+        "####..####...#...#...#.#....####.####..####.",
+        "#...#.#..#...#...#...#.#....#....#.#...#..#.",
+        "####..#..#...#....###..####.####.#..#..#..#.",
+        "............................................",
+    ]
+
+    scale = 2
+    x0 = 38   # tighter gap between logo and text
+    y0 = 1
+
+    for y, row in enumerate(word):
+        for x, ch in enumerate(row):
+            if ch == "#":
+                for dy in range(scale):
+                    for dx in range(scale):
+                        clearpx(buf, x0 + x*scale + dx, y0 + y*scale + dy)
+
 
 def main():
     if not os.path.exists(FB):
