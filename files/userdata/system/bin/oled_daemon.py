@@ -237,42 +237,101 @@ def resolve_media_path(value, base_dir):
         return v
     return os.path.join(base_dir, v)
 
+
+
+def _norm_path(s: str) -> str:
+    return (s or "").strip().replace("\\", "/")
+
+def _looks_like_screenshot(path: str) -> bool:
+    """
+    Heuristic: treat screenshots/title screens as last resort because they dither into 'static'.
+    """
+    s = _norm_path(path).lower()
+    return any(k in s for k in (
+        "screenshot", "screenshots", "snap", "snapshots",
+        "title", "titles", "ingame", "ingame", "mixrbv",
+        "fanart", "background"
+    ))
 def find_art_from_gamelist(base_dir, rom_fullpath):
+    """
+    Strict priority:
+      1) gamelist.xml <marquee> (ALWAYS first)
+      2) other gamelist tags (wheel/logo/box/thumbnail/image last)
+    """
     gamelist = os.path.join(base_dir, "gamelist.xml")
     if not os.path.exists(gamelist):
         return None
+
     try:
         root = ET.parse(gamelist).getroot()
         target = os.path.basename(rom_fullpath)
-        for game in root.findall("game"):
-            p = (game.findtext("path", default="") or "").replace("\\","/")
-            if os.path.basename(p) == target:
-                for tag in ("marquee", "image"):
-                    val = (game.findtext(tag, default="") or "").strip()
-                    cand = resolve_media_path(val, base_dir)
-                    if cand and os.path.exists(cand):
-                        return cand
-    except Exception:
-        pass
-    return None
 
+        for game in root.findall("game"):
+            pth = (game.findtext("path", default="") or "").strip().replace("\\", "/")
+            if os.path.basename(pth) != target:
+                continue
+
+            # 1) marquee ALWAYS first
+            val = (game.findtext("marquee", default="") or "").strip()
+            cand = resolve_media_path(val, base_dir)
+            if cand and os.path.exists(cand):
+                return cand
+
+            # 2) fallbacks in order (put screenshots last)
+            fallback_tags = [
+                "wheel",
+                "logo",
+                "box2d",
+                "box3d",
+                "box",
+                "thumbnail",
+                "mix",
+                "image",   # often screenshot -> LAST
+                "fanart",
+            ]
+            for tag in fallback_tags:
+                val = (game.findtext(tag, default="") or "").strip()
+                cand = resolve_media_path(val, base_dir)
+                if cand and os.path.exists(cand):
+                    return cand
+
+            return None
+    except Exception:
+        return None
 def find_art(base_dir, rom_fullpath):
+    # First: gamelist (marquee first)
     art = find_art_from_gamelist(base_dir, rom_fullpath)
     if art:
         return art
+
+    # Second: filesystem fallbacks (marquee first)
     rom_base = os.path.splitext(os.path.basename(rom_fullpath))[0]
     img_dir = os.path.join(base_dir, "images")
-    if os.path.isdir(img_dir):
-        for ext in (".png",".jpg",".jpeg"):
-            for pat in (
-                os.path.join(img_dir, f"{rom_base}-marquee{ext}"),
-                os.path.join(img_dir, f"{rom_base}-wheel{ext}"),
-                os.path.join(img_dir, f"{rom_base}-logo{ext}"),
-                os.path.join(img_dir, f"{rom_base}{ext}"),
-            ):
-                if os.path.exists(pat):
-                    return pat
+    if not os.path.isdir(img_dir):
+        return None
+
+    exts = (".png", ".jpg", ".jpeg")
+    patterns = [
+        "-marquee",
+        "-wheel",
+        "-logo",
+        "-box2d",
+        "-box3d",
+        "-box",
+        "-thumb",
+        "",          # plain filename as last resort
+    ]
+
+    for suf in patterns:
+        for ext in exts:
+            cand = os.path.join(img_dir, f"{rom_base}{suf}{ext}")
+            if os.path.exists(cand):
+                return cand
+
     return None
+
+
+
 
 def _is_valid_png(path):
     try:
@@ -300,7 +359,6 @@ def _blit_raw_to_blue(buf, raw):
             for bit in range(8):
                 if b & (1 << (7-bit)):
                     setpx(buf, xb*8 + bit, BLUE_Y0 + y)
-
 def render_monow_to_blue(buf, img_path):
     clear_rect(buf, 0, BLUE_Y0, W, BLUE_Y0 + BLUE_H)
 
@@ -327,16 +385,163 @@ def render_monow_to_blue(buf, img_path):
             "ffmpeg","-hide_banner","-loglevel","error",
             "-i", img_path,
             "-vf",
-            "scale=128:48:force_original_aspect_ratio=decrease,"
-            "pad=128:48:(ow-iw)/2:(oh-ih)/2,format=monow",
+            "format=rgba,"
+            "scale=128:48:force_original_aspect_ratio=decrease:flags=lanczos,"
+            "pad=128:48:(ow-iw)/2:(oh-ih)/2:color=black@0,"
+            "format=rgba",
             "-f","rawvideo","pipe:1"
         ]
-        raw = subprocess.check_output(cmd)
-        if len(raw) < RAW_NEED:
+        rgba = subprocess.check_output(cmd)
+        need = 128 * 48 * 4
+        if len(rgba) < need:
+            return False
+        rgba = rgba[:need]
+
+        # Luma + alpha
+        lum = [[0]*128 for _ in range(48)]
+        alp = [[0]*128 for _ in range(48)]
+        alpha_on = 0
+
+        idx = 0
+        for y in range(48):
+            ly = lum[y]
+            ay = alp[y]
+            for x in range(128):
+                r = rgba[idx]; g = rgba[idx+1]; b = rgba[idx+2]; a = rgba[idx+3]
+                idx += 4
+                ly[x] = (r*30 + g*59 + b*11) // 100
+                ay[x] = a
+                if a > 48:
+                    alpha_on += 1
+
+        total = 128*48
+        alpha_ratio = alpha_on / float(total)
+
+        # Content mask:
+        # - If alpha meaningful => use alpha
+        # - Else => background-from-corners difference mask
+        mask = [[False]*128 for _ in range(48)]
+        if 0.02 < alpha_ratio < 0.98:
+            for y in range(48):
+                my = mask[y]; ay = alp[y]
+                for x in range(128):
+                    my[x] = (ay[x] > 48)
+        else:
+            bg = (lum[0][0] + lum[0][127] + lum[47][0] + lum[47][127]) // 4
+            # Slightly looser so SSF2 shadows/top borders stay in mask
+            TOL = 14
+            for y in range(48):
+                my = mask[y]; ly = lum[y]
+                for x in range(128):
+                    v = ly[x]
+                    dv = v - bg
+                    if dv < 0: dv = -dv
+                    my[x] = (dv >= TOL)
+
+        mask_count = sum(1 for y in range(48) for x in range(128) if mask[y][x])
+        if mask_count < 40:
             return False
 
-        # invert: BLUE pixels on BLACK background
-        raw = bytes((b ^ 0xFF) for b in raw[:RAW_NEED])
+        ink = [[False]*128 for _ in range(48)]
+
+        # If mask is text-like (Mario), render it directly (no dithering).
+        TEXT_MAX = 1600
+        if mask_count <= TEXT_MAX and (0.02 < alpha_ratio < 0.98):
+            for y in range(48):
+                my = mask[y]; row = ink[y]
+                for x in range(128):
+                    row[x] = my[x]
+        else:
+            # EDGE + DITHER mode for complex marquees (MVC, SSF2, gradients, shadows)
+            # 1) Edges inside mask (preserve interior letters)
+            EDGE_THR = 22
+            edges = [[False]*128 for _ in range(48)]
+            for y in range(1, 47):
+                my  = mask[y]
+                myu = mask[y-1]
+                myd = mask[y+1]
+                ly  = lum[y]
+                lyu = lum[y-1]
+                lyd = lum[y+1]
+                er  = edges[y]
+                for x in range(1, 127):
+                    if not my[x]:
+                        continue
+                    # require neighborhood in mask to avoid just outlining the blob boundary
+                    if not (my[x-1] and my[x+1] and myu[x] and myd[x]):
+                        continue
+                    dx = ly[x+1] - ly[x-1]
+                    if dx < 0: dx = -dx
+                    dy = lyd[x] - lyu[x]
+                    if dy < 0: dy = -dy
+                    if (dx + dy) >= EDGE_THR:
+                        er[x] = True
+
+            # 2) Dithered fill from luminance inside mask (keeps gradients/shadows)
+            # Bayer 4x4 thresholds scaled 0..255
+            bayer4 = [
+                [  0, 128,  32, 160],
+                [192,  64, 224,  96],
+                [ 48, 176,  16, 144],
+                [240, 112, 208,  80],
+            ]
+
+            # Auto-contrast within mask so gradients don't disappear
+            lo, hi = 255, 0
+            for y in range(48):
+                my = mask[y]; ly = lum[y]
+                for x in range(128):
+                    if my[x]:
+                        v = ly[x]
+                        if v < lo: lo = v
+                        if v > hi: hi = v
+            if hi <= lo:
+                lo, hi = 0, 255
+
+            def stretch(v):
+                # map lo..hi -> 0..255
+                if v <= lo: return 0
+                if v >= hi: return 255
+                return (v - lo) * 255 // (hi - lo)
+
+            dfill = [[False]*128 for _ in range(48)]
+            for y in range(48):
+                my = mask[y]; ly = lum[y]
+                dr = dfill[y]
+                bt = bayer4[y & 3]
+                for x in range(128):
+                    if not my[x]:
+                        continue
+                    v = stretch(ly[x])
+                    # IMPORTANT: darker pixels should become "ink" (blue)
+                    # So compare inverted luminance against Bayer threshold.
+                    inv = 255 - v
+                    if inv > bt[x & 3]:
+                        dr[x] = True
+
+            # 3) Combine: edges OR dither fill (inside mask)
+            for y in range(48):
+                row = ink[y]
+                er  = edges[y]
+                dr  = dfill[y]
+                my  = mask[y]
+                for x in range(128):
+                    row[x] = my[x] and (er[x] or dr[x])
+
+        # Pack to 1bpp with your polarity (pre-invert background=1, ink=0, then XOR -> ink=1)
+        out = bytearray(RAW_NEED)
+        oi = 0
+        for y in range(48):
+            for xb in range(16):
+                b = 0
+                for bit in range(8):
+                    x = xb*8 + bit
+                    if not ink[y][x]:
+                        b |= (1 << (7-bit))
+                out[oi] = b
+                oi += 1
+
+        raw = bytes((bb ^ 0xFF) for bb in out)
 
         try:
             with open(CACHE_RAW, "wb") as f: f.write(raw)
@@ -346,8 +551,261 @@ def render_monow_to_blue(buf, img_path):
 
         _blit_raw_to_blue(buf, raw)
         return True
+
     except Exception:
         return False
+
+
+
+
+
+
+
+
+    def _gray(bg_color):
+        # bg_color: "black" or "white" — composites alpha during pad
+        cmd = [
+            "ffmpeg","-hide_banner","-loglevel","error",
+            "-i", img_path,
+            "-vf",
+            "format=rgba,"
+            "scale=128:48:force_original_aspect_ratio=decrease:flags=lanczos,"
+            f"pad=128:48:(ow-iw)/2:(oh-ih)/2:color={bg_color},"
+            "format=gray",
+            "-f","rawvideo","pipe:1"
+        ]
+        raw = subprocess.check_output(cmd)
+        return raw[:128*48] if raw and len(raw) >= 128*48 else None
+
+    # Thresholds tuned for thin “light text on transparent”
+    THR_LIGHT = 150   # pixel >= THR_LIGHT considered "light"
+    MIN_INK   = 40    # if fewer than this, try opposite background
+
+    # Pass A: assume light logo on transparent => composite on black, logo pixels are light
+    g = _gray("black")
+    if g is None:
+        return False
+
+    # Build logo mask
+    # logo_mask[y][x] True = logo pixel (should be ON/blue)
+    logo = [[False]*128 for _ in range(48)]
+    cnt = 0
+    i = 0
+    for y in range(48):
+        row = logo[y]
+        for x in range(128):
+            v = g[i]; i += 1
+            if v >= THR_LIGHT:
+                row[x] = True
+                cnt += 1
+
+    # If almost nothing was detected, this might be a dark logo; try white background
+    if cnt < MIN_INK:
+        g2 = _gray("white")
+        if g2 is None:
+            return False
+        logo = [[False]*128 for _ in range(48)]
+        i = 0
+        cnt = 0
+        for y in range(48):
+            row = logo[y]
+            for x in range(128):
+                v = g2[i]; i += 1
+                # On white bg, dark logo pixels are "ink"
+                if v < THR_LIGHT:
+                    row[x] = True
+                    cnt += 1
+        if cnt < MIN_INK:
+            return False
+
+    # 1px dilation so thin text doesn't disappear
+    dil = [[False]*128 for _ in range(48)]
+    for y in range(48):
+        for x in range(128):
+            if logo[y][x]:
+                for yy in (y-1,y,y+1):
+                    if 0 <= yy < 48:
+                        for xx in (x-1,x,x+1):
+                            if 0 <= xx < 128:
+                                dil[yy][xx] = True
+    logo = dil
+
+    # Pack to 1bpp in the SAME polarity your daemon expects:
+    # We create raw_pre with 0 bits where logo is, 1 bits elsewhere,
+    # then your existing invert (xor) will make logo bits become 1 (blue), background 0 (black).
+    out = bytearray(RAW_NEED)
+    oi = 0
+    for y in range(48):
+        for xb in range(16):
+            b = 0
+            for bit in range(8):
+                x = xb*8 + bit
+                # raw_pre bit = 0 for logo, 1 for background
+                if not logo[y][x]:
+                    b |= (1 << (7-bit))
+            out[oi] = b
+            oi += 1
+
+    # Keep your existing behavior: BLUE pixels on BLACK background
+    raw = bytes((b ^ 0xFF) for b in out)
+
+    try:
+        with open(CACHE_RAW, "wb") as f: f.write(raw)
+        with open(CACHE_KEY, "w") as f: f.write(key)
+    except Exception:
+        pass
+
+    _blit_raw_to_blue(buf, raw)
+    return True
+
+
+    def _ffmpeg_gray(bg):
+        # bg: "black" or "white" for alpha compositing
+        cmd = [
+            "ffmpeg","-hide_banner","-loglevel","error",
+            "-i", img_path,
+            "-vf",
+            "format=rgba,"
+            "scale=128:48:force_original_aspect_ratio=decrease:flags=lanczos,"
+            f"pad=128:48:(ow-iw)/2:(oh-ih)/2:color={bg},"
+            "format=gray",
+            "-f","rawvideo","pipe:1"
+        ]
+        return subprocess.check_output(cmd)
+
+    def _pack_1bpp_from_gray(gray_bytes, ink_mode):
+        # ink_mode: "bright" => logo pixels are bright (white logo on dark bg)
+        #           "dark"   => logo pixels are dark (black logo on white bg)
+        # output: 1bpp, row-major, MSB-first per byte (matches what monow/rawvideo expects)
+        out = bytearray(RAW_NEED)
+        idx = 0
+        out_i = 0
+        for y in range(48):
+            for xb in range(16):  # 128/8
+                b = 0
+                for bit in range(8):
+                    v = gray_bytes[idx]; idx += 1
+                    if ink_mode == "bright":
+                        on = (v >= 200)     # tweak 200 if needed
+                    else:
+                        on = (v <= 55)      # tweak 55 if needed
+                    if on:
+                        b |= (1 << (7-bit))  # MSB-first
+                out[out_i] = b
+                out_i += 1
+        return bytes(out)
+
+    try:
+        # Pass A: composite alpha on black -> good for WHITE logos
+        g_black = _ffmpeg_gray("black")
+        if len(g_black) < 128*48:
+            return False
+        g_black = g_black[:128*48]
+
+        bright = sum(1 for v in g_black if v >= 200)
+
+        # If we have enough bright pixels, it’s probably a white logo -> use bright ink
+        if bright >= 80:
+            raw1 = _pack_1bpp_from_gray(g_black, "bright")
+        else:
+            # Pass B: composite alpha on white -> good for BLACK logos
+            g_white = _ffmpeg_gray("white")
+            if len(g_white) < 128*48:
+                return False
+            g_white = g_white[:128*48]
+
+            dark = sum(1 for v in g_white if v <= 55)
+            if dark < 80:
+                # Nothing usable (avoid static): just leave cleared area
+                return False
+
+            raw1 = _pack_1bpp_from_gray(g_white, "dark")
+
+        try:
+            with open(CACHE_RAW, "wb") as f: f.write(raw1)
+            with open(CACHE_KEY, "w") as f: f.write(key)
+        except Exception:
+            pass
+
+        _blit_raw_to_blue(buf, raw1)
+        return True
+    except Exception:
+        return False
+
+
+    def _ffmpeg_gray(bg):
+        # bg: "black" or "white" for alpha compositing
+        cmd = [
+            "ffmpeg","-hide_banner","-loglevel","error",
+            "-i", img_path,
+            "-vf",
+            "format=rgba,"
+            "scale=128:48:force_original_aspect_ratio=decrease:flags=lanczos,"
+            f"pad=128:48:(ow-iw)/2:(oh-ih)/2:color={bg},"
+            "format=gray",
+            "-f","rawvideo","pipe:1"
+        ]
+        return subprocess.check_output(cmd)
+
+    def _pack_1bpp_from_gray(gray_bytes, ink_mode):
+        # ink_mode: "bright" => logo pixels are bright (white logo on dark bg)
+        #           "dark"   => logo pixels are dark (black logo on white bg)
+        # output: 1bpp, row-major, MSB-first per byte (matches what monow/rawvideo expects)
+        out = bytearray(RAW_NEED)
+        idx = 0
+        out_i = 0
+        for y in range(48):
+            for xb in range(16):  # 128/8
+                b = 0
+                for bit in range(8):
+                    v = gray_bytes[idx]; idx += 1
+                    if ink_mode == "bright":
+                        on = (v >= 200)     # tweak 200 if needed
+                    else:
+                        on = (v <= 55)      # tweak 55 if needed
+                    if on:
+                        b |= (1 << (7-bit))  # MSB-first
+                out[out_i] = b
+                out_i += 1
+        return bytes(out)
+
+    try:
+        # Pass A: composite alpha on black -> good for WHITE logos
+        g_black = _ffmpeg_gray("black")
+        if len(g_black) < 128*48:
+            return False
+        g_black = g_black[:128*48]
+
+        bright = sum(1 for v in g_black if v >= 200)
+
+        # If we have enough bright pixels, it’s probably a white logo -> use bright ink
+        if bright >= 80:
+            raw1 = _pack_1bpp_from_gray(g_black, "bright")
+        else:
+            # Pass B: composite alpha on white -> good for BLACK logos
+            g_white = _ffmpeg_gray("white")
+            if len(g_white) < 128*48:
+                return False
+            g_white = g_white[:128*48]
+
+            dark = sum(1 for v in g_white if v <= 55)
+            if dark < 80:
+                # Nothing usable (avoid static): just leave cleared area
+                return False
+
+            raw1 = _pack_1bpp_from_gray(g_white, "dark")
+
+        try:
+            with open(CACHE_RAW, "wb") as f: f.write(raw1)
+            with open(CACHE_KEY, "w") as f: f.write(key)
+        except Exception:
+            pass
+
+        _blit_raw_to_blue(buf, raw1)
+        return True
+    except Exception:
+        return False
+
 
 def draw_menu_pages(buf, page_idx):
     # 4 items per page: y positions in blue area
