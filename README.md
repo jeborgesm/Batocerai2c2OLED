@@ -1,3 +1,10 @@
+![Version](https://img.shields.io/badge/v1.2-stable-green)
+![Batocera](https://img.shields.io/badge/Batocera-v41-blue)
+![Platform](https://img.shields.io/badge/Raspberry%20Pi-4%20%7C%205-red)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![OLED](https://img.shields.io/badge/OLED-SSD1306-yellow)
+
+
 # Batocerai2c2OLED
 
 Batocera OLED marquee daemon for **SSD1306 128x64 I2C displays** on Raspberry Pi.
