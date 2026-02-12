@@ -175,7 +175,7 @@ Reboot recommended.
 
 # Uninstall
 
-Delete these folders from:
+Delete these files from:
 
 /userdata/system/
 
