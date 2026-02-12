@@ -20,18 +20,30 @@ Displayed when no game is running.
   - Memory usage
   - Raspberry Pi type and core count
 
-### Game Mode
-Displayed when a game is launched.
+## Game Mode
 
-- Shows the game **marquee / wheel / logo** image
-- Automatically detected from:
-  - `gamelist.xml`
-  - `images/` directory
-- Supports common artwork naming conventions
-- Falls back to text if no image is found
-- Cached rendering for performance
+Displayed automatically when a game is launched.
 
----
+-   Shows the game **marquee / wheel / logo artwork**
+-   Automatically detected from:
+    -   `<marquee>` entries in `gamelist.xml`
+    -   `<image>` fallback entries
+    -   `images/` directory
+-   Cached rendering for performance
+-   Falls back to text if no artwork is found
+
+### Intelligent Rendering Engine
+
+The marquee renderer uses a hybrid system:
+
+-   Transparent PNG artwork → uses alpha mask (clean edges, no
+    background square)
+-   Opaque artwork → uses original 1-bit monow conversion (preserves
+    interior details)
+-   Combined mask + detail logic prevents:
+    -   Solid blobs
+    -   Background noise
+    -   Loss of interior lettering
 
 ## Screenshots
 
@@ -78,47 +90,99 @@ Example wiring reference:
 - SSD1306 128x64 I2C **bicolor (yellow / blue)**
 - Framebuffer device: `/dev/fb1`
 
----
+------------------------------------------------------------------------
 
-## Installation
+# Installation (No Git)
 
-SSH into your Batocera system and run:
+Batocera does not include Git by default.
 
-```sh
-git clone https://github.com/jeborgesm/Batocerai2c2OLED
-cd Batocerai2c2OLED
-./install.sh
-```
+Installation is done using a release ZIP file.
 
----
+## Step 1 --- Download
 
-## Enable the Service (Required)
+Download the latest release from:
 
-After installation, the OLED daemon **must be enabled** in Batocera.
+https://github.com/jeborgesm/Batocerai2c2OLED/releases
 
-1. Open the **Batocera Main Menu**
-2. Go to **System Settings**
-3. Select **Services**
-4. Enable **OLED_DAEMON**
-5. Reboot (recommended)
+Download:
 
-### Batocera Services Menu
+Batocerai2c2OLED-vX.X.zip
+
+------------------------------------------------------------------------
+
+## Step 2 --- Extract
+
+Extract the ZIP file on your computer.
+
+You will see a folder named:
+
+userdata/
+
+------------------------------------------------------------------------
+
+## Step 3 --- Copy to Batocera
+
+### On Windows
+
+1.  Open File Explorer
+
+2.  In the address bar type:
+
+    \\\\BATOCERA
+
+    (or \\\\192.168.x.x)
+
+3.  Open the `share` folder
+
+4.  Drag the extracted `userdata` folder into `share`
+
+5.  Allow overwrite if prompted
+
+### On macOS
+
+1.  Finder → Go → Connect to Server
+
+2.  Enter:
+
+    smb://batocera
+
+3.  Open the `share` folder
+
+4.  Drag the `userdata` folder into it
+
+5.  Allow overwrite if prompted
+
+------------------------------------------------------------------------
+
+## Step 4 --- Enable the Service
+
+On Batocera:
+
+Main Menu → System Settings → Services → OLED_DAEMON → ON
+
+Reboot recommended.
 
 ![Batocera Services Menu](screenshots/batocera-services.jpg)
 
----
+------------------------------------------------------------------------
 
-## Uninstall
+# Uninstall
 
-```sh
-./uninstall.sh
-```
+Delete these folders from:
 
-If the service was enabled, also disable it in:
+/userdata/system/
 
-**Main Menu → System Settings → Services → OLED_DAEMON → OFF**
+-   bin/oled_daemon.py
+-   scripts/oled_state.sh
+-   services/OLED_DAEMON
 
----
+Then disable the service:
+
+Main Menu → System Settings → Services → OLED_DAEMON → OFF
+
+Reboot.
+
+------------------------------------------------------------------------
 
 ## How It Works
 
@@ -133,26 +197,45 @@ If the service was enabled, also disable it in:
 - `oled_daemon.py` reads this state and:
   - Displays system metrics in menu mode
   - Displays game artwork in game mode
-- Artwork is converted to 1-bit using `ffmpeg` and written directly to
+- Artwork is converted to 1-bit and written directly to
   `/dev/fb1`.
 
----
+------------------------------------------------------------------------
 
-## Artwork Requirements
+# Artwork Recommendations
 
-For best results, scrape artwork for your systems.
+For best results:
+
+-   Scrape artwork for your systems.
+-   Prefer high-contrast PNG marquees.
+-   Transparent background marquees give the cleanest output.
 
 Supported sources:
-- `<marquee>` or `<image>` entries in `gamelist.xml`
-- Files in the system `images/` directory
 
-Supported filename patterns:
-- `romname-marquee.png`
-- `romname-wheel.png`
-- `romname-logo.png`
-- `romname.png`
+-   `<marquee>` in `gamelist.xml` (highest priority)
+-   `<image>` fallback
+-   Files inside system `images/` folder
 
----
+Supported naming examples:
+
+-   romname-marquee.png
+-   romname-wheel.png
+-   romname-logo.png
+-   romname.png
+
+------------------------------------------------------------------------
+
+# Technical Notes
+
+-   Designed specifically for Batocera Linux
+-   Uses Batocera's native service system
+-   No RetroPie patches required
+-   Minimal dependencies:
+    -   Python
+    -   ffmpeg
+    -   Pillow (PIL)
+
+------------------------------------------------------------------------
 
 ## Notes
 
