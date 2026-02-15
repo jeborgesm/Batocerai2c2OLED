@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/v1.2-stable-green)
+![Version](https://img.shields.io/badge/v1.3-stable-green)
 ![Batocera](https://img.shields.io/badge/Batocera-v41-blue)
 ![Platform](https://img.shields.io/badge/Raspberry%20Pi-4%20%7C%205-red)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
@@ -7,7 +7,7 @@
 
 # Batocerai2c2OLED
 
-Batocera OLED marquee daemon for **SSD1306 128x64 I2C displays** on Raspberry Pi.
+Batocera OLED marquee daemon for **SSD1306 / SSD1307 128x64 I2C displays** on Raspberry Pi.
 
 This project adds a small OLED screen to Batocera systems that shows
 system information in the menu and game marquee artwork while playing games.
@@ -173,6 +173,25 @@ Reboot recommended.
 
 ------------------------------------------------------------------------
 
+# 🧠 Advanced: Enable Boot Console on OLED (Optional)
+
+Displays Linux boot messages on OLED at power-on.
+
+⚠ Advanced feature\
+⚠ Boot console may appear mirrored depending on panel wiring
+
+Edit BOOT partition `cmdline.txt` (single line):
+
+Add:
+
+    console=tty1 fbcon=map:10,rotate:2
+
+Reboot.
+
+To disable, remove `fbcon=map:10,rotate:2`.
+
+------------------------------------------------------------------------
+
 # Uninstall
 
 Delete these files from:
@@ -243,6 +262,21 @@ Supported naming examples:
     -   Pillow (PIL)
 
 ------------------------------------------------------------------------
+# 🛠 Troubleshooting
+
+Clear marquee cache:
+
+``` sh
+rm -f /tmp/oled.marquee.raw /tmp/oled.marquee.key
+```
+
+Check framebuffer:
+
+``` sh
+ls /dev/fb*
+```
+
+------------------------------------------------------------------------
 
 ## Notes
 
@@ -251,7 +285,8 @@ Supported naming examples:
 - Uses Batocera’s native service system
 - Minimal dependencies (Python + ffmpeg)
 
----
+------------------------------------------------------------------------
+
 
 ## Credits
 
