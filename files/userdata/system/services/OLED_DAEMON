@@ -1,14 +1,53 @@
 #!/bin/sh
-PID="/var/run/oled_daemon.pid"
-PY="/userdata/system/bin/oled_daemon.py"
+
+DAEMON="/userdata/system/bin/oled_daemon.py"
 
 case "$1" in
   start)
-    python3 "$PY" >/dev/null 2>&1 &
-    echo $! > "$PID"
+    echo "[OLED] Starting daemon..."
+
+    # Stop any boot splash (if you ever use one)
+    touch /tmp/oled_boot.stop 2>/dev/null
+
+    # Immediately detach kernel framebuffer console from fb1
+    # (prevents cursor/underline lines and shutdown spam)
+    if [ -e /sys/class/vtconsole/vtcon1/bind ]; then
+      echo 0 > /sys/class/vtconsole/vtcon1/bind 2>/dev/null || true
+    fi
+
+    # Clear OLED framebuffer once to remove any fbcon artifacts (thin bottom line)
+    if [ -w /dev/fb1 ]; then
+      dd if=/dev/zero of=/dev/fb1 bs=1024 count=1 2>/dev/null
+      sleep 0.1
+      dd if=/dev/zero of=/dev/fb1 bs=1024 count=1 2>/dev/null
+    fi
+
+    # Start daemon
+    /usr/bin/python3 "$DAEMON" >/dev/null 2>&1 &
     ;;
+
   stop)
-    [ -f "$PID" ] && kill "$(cat "$PID")" 2>/dev/null
-    rm -f "$PID"
+    echo "[OLED] Stopping daemon..."
+    pkill -f oled_daemon.py 2>/dev/null
+
+    # Clear OLED on stop/shutdown
+    if [ -w /dev/fb1 ]; then
+      dd if=/dev/zero of=/dev/fb1 bs=1024 count=1 2>/dev/null
+      sleep 0.2
+      dd if=/dev/zero of=/dev/fb1 bs=1024 count=1 2>/dev/null
+    fi
+    ;;
+
+  restart)
+    "$0" stop
+    sleep 1
+    "$0" start
+    ;;
+
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
     ;;
 esac
+
+exit 0

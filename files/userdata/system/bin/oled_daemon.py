@@ -103,6 +103,23 @@ def draw_text_scaled(buf, s, x, y, scale=2, invert=False):
         cx += 6 * scale
 
 def write_fb(buf):
+    # Fix persistent thin bottom line WITHOUT breaking logo rendering.
+    # Your working buffer behaves like row-major 1bpp: 64 rows * 16 bytes/row.
+    # Bottom row (y=63) is the last 16 bytes. Clear only those.
+    try:
+        if isinstance(buf, bytearray) and len(buf) >= 1024:
+            row_start = 63 * 16
+            for i in range(row_start, row_start + 16):
+                buf[i] = 0x00
+        elif len(buf) >= 1024:
+            b = bytearray(buf[:1024])
+            row_start = 63 * 16
+            for i in range(row_start, row_start + 16):
+                b[i] = 0x00
+            buf = b
+    except Exception:
+        pass
+
     with open(FB, "wb", buffering=0) as f:
         f.write(buf)
 
