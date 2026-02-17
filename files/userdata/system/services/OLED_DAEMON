@@ -4,6 +4,16 @@ DAEMON="/userdata/system/bin/oled_daemon.py"
 
 case "$1" in
   start)
+
+    # --- Force OLED brightness (ssd1307fb backlight) ---
+    BL=$(ls /sys/class/backlight 2>/dev/null | head -n 1)
+    if [ -n "$BL" ] && [ -f "/sys/class/backlight/$BL/max_brightness" ]; then
+        MAX=$(cat "/sys/class/backlight/$BL/max_brightness" 2>/dev/null)
+        if [ -n "$MAX" ]; then
+            echo "$MAX" > "/sys/class/backlight/$BL/brightness" 2>/dev/null || true
+        fi
+    fi
+
     echo "[OLED] Starting daemon..."
 
     # Stop any boot splash (if you ever use one)
