@@ -251,6 +251,50 @@ Supported naming examples:
 
 ------------------------------------------------------------------------
 
+## OLED Brightness Control (v1.3.1+)
+
+By default, the OLED daemon sets brightness to **100%** (maximum) to match the brightness of the boot console.
+
+You can optionally reduce brightness using a simple config file:
+
+### Step 1 — Create the config file
+Create (or edit) this file on Batocera:
+
+`/userdata/system/configs/oled.conf`
+
+You can do this either:
+- Over the network share: `\\BATOCERA\share\system\configs\oled.conf`
+- Or via SSH
+
+### Step 2 — Add this setting
+Inside `oled.conf`, add:
+
+```sh
+OLED_BRIGHTNESS_PERCENT=100
+```
+
+Valid range: 1–100
+
+100 = brightest
+
+50 = medium
+
+20 = dim
+
+### Step 3 — Restart the OLED daemon
+
+After changing brightness, restart the service:
+
+/userdata/system/services/OLED_DAEMON restart
+
+#### Notes
+
+
+Brightness control works when the OLED driver exposes /sys/class/backlight.
+If your system has no /sys/class/backlight, this feature may not be available.
+
+------------------------------------------------------------------------
+
 # Technical Notes
 
 -   Designed specifically for Batocera Linux
@@ -284,19 +328,6 @@ ls /dev/fb*
 - Does not rely on RetroPie scripts or patches
 - Uses Batocera’s native service system
 - Minimal dependencies (Python + ffmpeg)
-
-
-## OLED Brightness (v1.3.1+)
-
-When the OLED daemon starts, it sets OLED brightness to the maximum value exposed by the driver:
-
-/sys/class/backlight/*/max_brightness
-
-/sys/class/backlight/*/brightness
-
-This makes the daemon brightness match the boot console brightness on supported OLED drivers.
-
-If your system does not have /sys/class/backlight, brightness control may not be available.
 
 ------------------------------------------------------------------------
 
