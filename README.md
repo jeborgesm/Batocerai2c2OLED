@@ -285,6 +285,19 @@ ls /dev/fb*
 - Uses Batocera’s native service system
 - Minimal dependencies (Python + ffmpeg)
 
+
+## OLED Brightness (v1.3.1+)
+
+When the OLED daemon starts, it sets OLED brightness to the maximum value exposed by the driver:
+
+/sys/class/backlight/*/max_brightness
+
+/sys/class/backlight/*/brightness
+
+This makes the daemon brightness match the boot console brightness on supported OLED drivers.
+
+If your system does not have /sys/class/backlight, brightness control may not be available.
+
 ------------------------------------------------------------------------
 
 
