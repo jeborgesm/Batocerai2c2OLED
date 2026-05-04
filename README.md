@@ -192,6 +192,56 @@ To disable, remove `fbcon=map:10,rotate:2`.
 
 ------------------------------------------------------------------------
 
+# 🧠 Advanced: Manual Install Steps
+
+Bash Commands for Installation (Use PowerShell or Git Bash in Windows):
+```
+[COPY files to the Batocera folders]
+
+[LOGIN]:
+$ ssh root@192.168.1.XXX
+root@192.168.1.XXX's password: linux
+
+
+[root@batocera /userdata/system]# ls /dev/i2c-*
+/dev/i2c-11  /dev/i2c-12/28 09:44
+
+[root@batocera /userdata/system]# mount -o remount,rw /boot
+[root@batocera /userdata/system]# nano /boot/cmdline.txt
+
+Add at the end: fbcon=map:10,rotate:2
+At starts must be: console=tty1 OR tty3(To just display lines and screen activity, no verbose)
+
+
+Save Changes:
+CTRL+O
+CTRL+X
+
+[root@batocera /userdata/system]# nano /boot/cmdline.txt
+Add at the end:
+
+# Enable I2C
+dtparam=i2c_arm=on
+
+# SSD1306 128x64 OLED (Pi 5 uses i2c-11)
+# OLED framebuffer on i2c-11 addr 0x3c
+dtoverlay=ssd1306,i2c-11,addr=0x3c,com_invdir=1,seg_remap=1
+
+
+Save Changes:
+CTRL+O
+CTRL+X
+
+[root@batocera /userdata/system]# chmod +x /userdata/system/scripts/oled_state.sh
+[root@batocera /userdata/system]# chmod +x /userdata/system/services/OLED_DAEMON
+
+[root@batocera /userdata/system]# reboot
+
+
+```
+
+------------------------------------------------------------------------
+
 # Uninstall
 
 Delete these files from:
